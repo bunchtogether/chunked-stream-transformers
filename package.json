@@ -1,0 +1,58 @@
+{
+  "name": "@bunchtogether/chunked-stream-transformers",
+  "version": "0.0.0",
+  "main": "dist/index.js",
+  "repository": "git@github.com:bunchtogether/chunked-stream-transformers",
+  "author": "John Wehr <johnwehr@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "rm -rf ./dist; flow-remove-types ./src --out-dir ./dist && flow-copy-source ./src ./dist",
+    "flow-typed": "./node_modules/.bin/flow-typed install --overwrite",
+    "test": "yarn lint && yarn test:js",
+    "test:js": "cross-env NODE_ENV=test jest tests",
+    "lint": "npm run lint:js && npm run lint:flow",
+    "lint:js": "eslint -c ./.eslintrc --cache --no-eslintrc --fix .",
+    "lint:flow": "flow --show-all-errors",
+    "coverage": "codecov",
+    "documentation": "documentation readme src/index.js --section='API' --babel=./babel.config.json"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "yarn lint && yarn documentation && yarn build && git add dist ./README.md"
+    }
+  },
+  "jest": {
+    "coverageDirectory": "./coverage/",
+    "collectCoverage": true,
+    "collectCoverageFrom": [
+      "src/*.js"
+    ]
+  },
+  "devDependencies": {
+    "@babel/core": "^7.12.16",
+    "@babel/plugin-transform-flow-strip-types": "^7.12.13",
+    "babel-eslint": "^10.1.0",
+    "babel-jest": "^26.6.3",
+    "codecov": "^3.8.1",
+    "cross-env": "^7.0.3",
+    "documentation": "^13.1.1",
+    "eslint": "^7.20.0",
+    "eslint-config-bunchtogether": "^1.1.6",
+    "eslint-plugin-flowtype": "^5.2.0",
+    "eslint-plugin-flowtype-errors": "^4.4.0",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-jest": "^24.1.5",
+    "eslint-plugin-jsx-a11y": "^6.4.1",
+    "eslint-plugin-react": "^7.22.0",
+    "expect": "^26.6.2",
+    "flow-bin": "^0.144.0",
+    "flow-copy-source": "^2.0.9",
+    "flow-remove-types": "^2.144.0",
+    "flow-typed": "3.2.1",
+    "husky": "^5.0.9",
+    "jest": "^26.6.3",
+    "uuid": "^8.3.2"
+  },
+  "dependencies": {
+  }
+}
