@@ -2,7 +2,9 @@
 
 [![CircleCI](https://circleci.com/gh/bunchtogether/chunked-stream-transformers.svg?style=svg)](https://circleci.com/gh/bunchtogether/chunked-stream-transformers) [![npm version](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers.svg)](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers)
 
-[``SerializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#serializetransform) transforms large binary chunks into small chunks limited to a maximum size. [``DeserializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#deserializetransform) assembles the small chunks to recreate the original large chunks.
+[``SerializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#serializetransform) transforms large binary chunks into small chunks limited to a maximum size. 
+
+[``DeserializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#deserializetransform) assembles the small chunks to recreate the original large chunks.
 
 The protocol implementation is conceptually similar to [Real-time Transport Protocol (RTP)](https://en.wikipedia.org/wiki/Real-time_Transport_Protocol).
 

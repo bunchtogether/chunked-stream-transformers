@@ -1,7 +1,6 @@
 // @flow
 
 const { Transform } = require('stream');
-const crypto = require('crypto');
 
 /**
  * Emitted by DeserializeTransform streams when the time after the last
@@ -40,8 +39,10 @@ class SerializeTransform extends Transform {
 
     // Write a header containing the ID of this buffer to each slice
     const header = Buffer.alloc(8);
-    // write buffer id
-    crypto.randomBytes(4).copy(header, 0);
+    
+    // write buffer id (random 32 bit unsigned)
+    header.writeUInt32LE((Math.random()*4294967296)>>>0);
+
     // buffer length
     header.writeUInt32LE(bufferLength, 4);
 
