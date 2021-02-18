@@ -2,7 +2,7 @@
 
 [![CircleCI](https://circleci.com/gh/bunchtogether/chunked-stream-transformers.svg?style=svg)](https://circleci.com/gh/bunchtogether/chunked-stream-transformers) [![npm version](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers.svg)](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers)
 
-SerializeTransform transforms large binary chunks into small chunks limited to a maximum size. DeserializeTransform reassembles the small chunks to recreate the original large chunks.
+[``SerializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#serializetransform) transforms large binary chunks into small chunks limited to a maximum size. [``DeserializeTransform``](https://github.com/bunchtogether/chunked-stream-transformers#deserializetransform) reassembles the small chunks to recreate the original large chunks.
 
 The protocol implementation is conceptually similar to [Real-time Transport Protocol (RTP)](https://en.wikipedia.org/wiki/Real-time_Transport_Protocol).
 
@@ -61,16 +61,20 @@ deserializeTransform.onActive().then(() => {
 
 // Active event is emitted when all chunks start
 deserializeTransform.on('active', () => {
-  deserializeTransform.end();
+  
 });
 
 // Idle event is emitted when all chunks have been completed
 deserializeTransform.on('idle', () => {
-  deserializeTransform.end();
+  deserializeTransform.end(); // Safe to close the stream
 });
 
 deserializeTransform.on('error', (error) => {
-  deserializeTransform.end();
+  if(error instanceof ChunkTimeoutError) {
+    // One of the writes timed out
+  } else if(error instanceof ChunkIncompleteError) {
+    // The transform was closed while a write was in progress
+  }
 });
 
 ```
