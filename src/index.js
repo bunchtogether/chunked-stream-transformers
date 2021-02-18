@@ -193,7 +193,7 @@ class DeserializeTransform extends Transform {
     // $FlowFixMe
     const slice = typeof chunk === 'string' ? Buffer.from(chunk, encoding) : chunk;
     // Length of the slice without the header
-    const sliceLength = slice.length - 10;
+    const sliceLength = slice.length - 12;
     // ID of the original buffer
     const id = slice.readUInt32LE(0);
     // Length of the original buffer

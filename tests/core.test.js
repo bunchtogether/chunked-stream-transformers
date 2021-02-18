@@ -15,7 +15,7 @@ describe('Chunked Stream Transformers', () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
     const deserializeTransform = new DeserializeTransform();
-    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
 
     // $FlowFixMe
     const stream = Readable.from(buffer);
@@ -38,7 +38,7 @@ describe('Chunked Stream Transformers', () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
     const deserializeTransform = new DeserializeTransform();
-    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
 
     // $FlowFixMe
     const stream = Readable.from(buffer);
@@ -75,7 +75,7 @@ describe('Chunked Stream Transformers', () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
     const deserializeTransform = new DeserializeTransform();
-    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
 
     // $FlowFixMe
     const stream = Readable.from(buffer);
@@ -104,7 +104,7 @@ describe('Chunked Stream Transformers', () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
     const deserializeTransform = new DeserializeTransform();
-    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
 
     // $FlowFixMe
     const stream = Readable.from(buffer);
@@ -133,7 +133,7 @@ describe('Chunked Stream Transformers', () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
     const deserializeTransform = new DeserializeTransform();
-    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
 
     let redundantChunksReceived = 0;
     let redundantChunksSent = 0;
@@ -255,6 +255,27 @@ describe('Chunked Stream Transformers', () => {
 
     expect(onActivePromiseResolved).toEqual(true);
     expect(onIdlePromiseResolved).toEqual(true);
+  });
+
+  test('Serializes and deserializes chunks without using a readable stream', async () => {
+    const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
+    const serializeTransform = new SerializeTransform({ maxChunkSize });
+    const deserializeTransform = new DeserializeTransform();
+    let sentBytes = 0;
+    let receivedBytes = 0;
+    deserializeTransform.on('data', (buffer) => {
+      receivedBytes += buffer.length;
+    });
+    serializeTransform.pipe(deserializeTransform);
+    for (let i = 0; i < 10; i += 1) {
+      const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
+      sentBytes += buffer.length;
+      serializeTransform.write(buffer);
+      await deserializeTransform.onIdle();
+    }
+    await deserializeTransform.onIdle();
+    serializeTransform.end();
+    expect(sentBytes).toEqual(receivedBytes);
   });
 });
 

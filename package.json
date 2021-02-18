@@ -14,7 +14,9 @@
     "lint:js": "eslint -c ./.eslintrc --cache --no-eslintrc --fix .",
     "lint:flow": "flow --show-all-errors",
     "coverage": "codecov",
-    "documentation": "documentation readme src/index.js --section='API' --babel=./babel.config.json"
+    "documentation": "documentation readme src/index.js --section='API' --babel=./babel.config.json",
+    "profile": "yarn build && clear && node --prof profile/index.js && node --prof-process $(ls isolate-*) && rm isolate-*",
+    "inspect": "yarn build && clear && node --inspect profile/index.js"
   },
   "husky": {
     "hooks": {

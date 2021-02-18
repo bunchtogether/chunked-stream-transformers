@@ -18,11 +18,11 @@ class ChunkIncompleteError extends Error {}
 
 /**
  * Ingests data of any size, emits consistently sized chunks containing
- * a 10 byte header used by DeserializeTransform to reconstruct the original
+ * a 12 byte header used by DeserializeTransform to reconstruct the original
  * stream
  * @constructor
  * @param {Object} [options={ maxChunkSize: 1316 }] - Transform stream options, see {@link https://nodejs.org/api/stream.html#stream_class_stream_transform Node.js documentation} for full documentation
- * @param {number} [options.maxChunkSize=1316] - Maximum size in bytes of emitted chunks, including a 10 byte header.
+ * @param {number} [options.maxChunkSize=1316] - Maximum size in bytes of emitted chunks, including a 12 byte header.
  */
 class SerializeTransform extends Transform {
                                
@@ -39,14 +39,14 @@ class SerializeTransform extends Transform {
     const bufferLength = buffer.length;
 
     // Write a header containing the ID of this buffer to each slice
-    const header = Buffer.alloc(6);
+    const header = Buffer.alloc(8);
     // write buffer id
-    crypto.randomBytes(2).copy(header, 0);
+    crypto.randomBytes(4).copy(header, 0);
     // buffer length
-    header.writeUInt32LE(bufferLength, 2);
+    header.writeUInt32LE(bufferLength, 4);
 
     // Max slice length + header
-    const maxSliceLength = this.maxChunkSize - 10;
+    const maxSliceLength = this.maxChunkSize - 12;
     let offset = 0;
 
     try {
@@ -54,10 +54,10 @@ class SerializeTransform extends Transform {
       // header containing the ID and length of the buffer
       while (offset < bufferLength) {
         const sliceLength = offset + maxSliceLength > buffer.length ? buffer.length - offset : maxSliceLength;
-        const slice = Buffer.alloc(10 + sliceLength);
+        const slice = Buffer.alloc(12 + sliceLength);
         header.copy(slice, 0);
-        slice.writeUInt32LE(offset, 6);
-        buffer.copy(slice, 10, offset, offset + sliceLength);
+        slice.writeUInt32LE(offset, 8);
+        buffer.copy(slice, 12, offset, offset + sliceLength);
         this.push(slice);
         offset += sliceLength;
       }
@@ -78,12 +78,13 @@ class SerializeTransform extends Transform {
  * and emits the original, larger chunks
  * @constructor
  * @param {Object} [options={ timeout: 5000 }] - Transform stream options, see {@link https://nodejs.org/api/stream.html#stream_class_stream_transform Node.js documentation} for full documentation
- * @param {number} [options.timeout=5000] - Maximum size in bytes of emitted chunks, including a 10 byte header.
+ * @param {number} [options.timeout=5000] - Maximum size in bytes of emitted chunks, including a 12 byte header.
  */
 class DeserializeTransform extends Transform {
                           
                                          
                                                  
+                                                     
                                                   
                                           
 
@@ -91,8 +92,89 @@ class DeserializeTransform extends Transform {
     super(options);
     this.timeout = options.timeout || 5000;
     this.bufferMap = new Map();
+    this.bufferOffsetsMap = new Map();
     this.timeoutMap = new Map();
     this.bytesRemainingMap = new Map();
+  }
+
+  /**
+   * Bytes expected from active writes
+   */
+  get bytesRemaining()        {
+    let bytesRemaining = 0;
+    for (const bytes of this.bytesRemainingMap.values()) {
+      bytesRemaining += bytes;
+    }
+    return bytesRemaining;
+  }
+
+  /**
+   * Returns true if any writes are active
+   */
+  get active()         {
+    return this.bufferMap.size > 0;
+  }
+
+  /**
+   * Resolves immediately if no writes are active
+   * or when all writes are complete
+   */
+  onIdle()               {
+    if (this.bufferMap.size === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const handleError = (error) => {
+        this.removeListener('error', handleError);
+        this.removeListener('idle', handleIdle);
+        reject(error);
+      };
+      const handleIdle = () => {
+        this.removeListener('error', handleError);
+        this.removeListener('idle', handleIdle);
+        resolve();
+      };
+      this.on('error', handleError);
+      this.on('idle', handleIdle);
+    });
+  }
+
+  /**
+   * Resolves immediately if writes are active
+   * or when a write begins
+   */
+  onActive()               {
+    if (this.bufferMap.size > 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const handleError = (error) => {
+        this.removeListener('error', handleError);
+        this.removeListener('active', handleActive);
+        reject(error);
+      };
+      const handleActive = () => {
+        this.removeListener('error', handleError);
+        this.removeListener('active', handleActive);
+        resolve();
+      };
+      this.on('error', handleError);
+      this.on('active', handleActive);
+    });
+  }
+
+  cleanupChunk(id       ) {
+    this.bufferMap.delete(id);
+    this.bytesRemainingMap.delete(id);
+    this.bufferOffsetsMap.delete(id);
+    this.timeoutMap.delete(id);
+    if (this.timeoutMap.size === 0) {
+      clearInterval(this.timeoutCheckInterval);
+      delete this.timeoutCheckInterval;
+    }
+    if (this.bufferMap.size === 0) {
+      this.emit('idle');
+    }
   }
 
   timeoutCheck() {
@@ -102,6 +184,7 @@ class DeserializeTransform extends Transform {
         const bytesRemaining = this.bytesRemainingMap.get(id) || 'unknown';
         const error = new ChunkTimeoutError(`DeserializeTransform timeout error for chunk ${id} after ${this.timeout}ms, ${bytesRemaining} bytes remaining`);
         this.emit('error', error);
+        this.cleanupChunk(id);
       }
     }
   }
@@ -110,27 +193,41 @@ class DeserializeTransform extends Transform {
     // $FlowFixMe
     const slice = typeof chunk === 'string' ? Buffer.from(chunk, encoding) : chunk;
     // Length of the slice without the header
-    const sliceLength = slice.length - 10;
+    const sliceLength = slice.length - 12;
     // ID of the original buffer
-    const id = slice.readUInt16LE(0);
+    const id = slice.readUInt32LE(0);
     // Length of the original buffer
-    const bufferLength = slice.readUInt32LE(2);
+    const bufferLength = slice.readUInt32LE(4);
     // Offset of this slice
-    const offset = slice.readUInt32LE(6);
+    const offset = slice.readUInt32LE(8);
+    const bufferOffsets = this.bufferOffsetsMap.get(id) || new Set();
+    if (bufferOffsets.has(offset)) {
+      this.emit('redundantchunk', id, offset, slice);
+      callback();
+      return;
+    }
     // Buffer to be filled in with slice data
     let buffer = this.bufferMap.get(id);
     if (typeof buffer === 'undefined') {
+      if (this.bufferMap.size === 0) {
+        this.emit('active');
+      }
       buffer = Buffer.alloc(bufferLength);
       this.bufferMap.set(id, buffer);
+      this.bufferOffsetsMap.set(id, bufferOffsets);
       if (typeof this.timeoutCheckInterval === 'undefined') {
         this.timeoutCheckInterval = setInterval(this.timeoutCheck.bind(this), this.timeout / 2);
       }
     }
+    bufferOffsets.add(offset);
     // Copy slice data to the buffer
-    slice.copy(buffer, offset, 10);
+    slice.copy(buffer, offset, 12);
     // Calculate remaining bytes
     const bytesRemaining = (this.bytesRemainingMap.get(id) || bufferLength) - sliceLength;
     // If slices remain callback and return
+    if(bytesRemaining < 0) {
+      callback(new Error('Invalid number of bytes remaining in chunk'));
+    }
     if (bytesRemaining > 0) {
       this.bytesRemainingMap.set(id, bytesRemaining);
       this.timeoutMap.set(id, Date.now() + this.timeout);
@@ -139,22 +236,46 @@ class DeserializeTransform extends Transform {
     }
     // Emit the buffer and cleanup
     callback(undefined, buffer);
-    this.bytesRemainingMap.delete(id);
-    this.bufferMap.delete(id);
-    this.timeoutMap.delete(id);
-    if (this.timeoutMap.size === 0) {
-      clearInterval(this.timeoutCheckInterval);
-      delete this.timeoutCheckInterval;
-    }
+    this.cleanupChunk(id);
   }
 
   _flush(callback                                                   ) {
-    if (this.bufferMap.size === 0) {
-      callback();
+    if (this.bufferMap.size > 0) {
+      const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.bufferMap.size} ${this.bufferMap.size > 1 ? 'chunks are' : 'chunk is'} pending`);
+      callback(error);
       return;
     }
-    const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.bufferMap.size} ${this.bufferMap.size > 1 ? 'chunks are' : 'chunk is'} pending`);
-    callback(error);
+    if (this.bytesRemainingMap.size > 0) {
+      // This should never happen and indicataes a failed cleanup
+      const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.bytesRemainingMap.size} ${this.bytesRemainingMap.size > 1 ? 'byte tracking maps are' : 'byte tracking map is'} present`);
+      callback(error);
+      return;
+    }
+    if (this.bufferOffsetsMap.size > 0) {
+      // This should never happen and indicataes a failed cleanup
+      const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.bufferOffsetsMap.size} ${this.bufferOffsetsMap.size > 1 ? 'buffer offset maps are' : 'buffer offset map is'} present`);
+      callback(error);
+      return;
+    }
+    if (this.timeoutMap.size > 0) {
+      // This should never happen and indicataes a failed cleanup
+      const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.timeoutMap.size} ${this.timeoutMap.size > 1 ? 'timeout maps are' : 'timeout map is'} present`);
+      callback(error);
+      return;
+    }
+    if (this.timeoutMap.size > 0) {
+      // This should never happen and indicataes a failed cleanup
+      const error = new ChunkIncompleteError(`Unable to flush DeserializeTransform, ${this.timeoutMap.size} ${this.timeoutMap.size > 1 ? 'timeout maps are' : 'timeout map is'} present`);
+      callback(error);
+      return;
+    }
+    if (typeof this.timeoutCheckInterval !== 'undefined') {
+      // This should never happen and indicataes a failed cleanup
+      const error = new ChunkIncompleteError('Unable to flush DeserializeTransform, timeout check interval is active');
+      callback(error);
+      return;
+    }
+    callback();
   }
 }
 
