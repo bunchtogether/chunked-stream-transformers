@@ -81,7 +81,7 @@ deserializeTransform.on('error', (error) => {
 
 ## Install
 
-`yarn add chunked-stream-transformers`
+`yarn add @bunchtogether/chunked-stream-transformers`
 
 ## API
 
