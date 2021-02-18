@@ -10,7 +10,7 @@ const {
   DeserializeTransform,
 } = require('../src');
 
-describe.skip('Chunked Stream Transformers', () => {
+describe('Chunked Stream Transformers', () => {
   test('Serializes and deserializes a readable stream into consistently sized chunks', async () => {
     const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
     const serializeTransform = new SerializeTransform({ maxChunkSize });
@@ -46,26 +46,18 @@ describe.skip('Chunked Stream Transformers', () => {
     const result = await new Promise((resolve, reject) => {
       deserializeTransform.on('data', resolve);
 
-      let serializeTransformFinished = false;
-      let pendingWrites = 0;
-
       serializeTransform.on('data', (data) => {
-        pendingWrites += 1;
         setTimeout(() => {
           deserializeTransform.write(data);
-          pendingWrites -= 1;
-          if (serializeTransformFinished && pendingWrites === 0) {
-            deserializeTransform.end();
-          }
         }, Math.random() * 100);
-      });
-
-      serializeTransform.on('finish', () => {
-        serializeTransformFinished = true;
       });
 
       deserializeTransform.on('error', (error) => {
         reject(error);
+      });
+
+      deserializeTransform.on('idle', () => {
+        deserializeTransform.end();
       });
 
       serializeTransform.on('error', (error) => {
@@ -135,6 +127,134 @@ describe.skip('Chunked Stream Transformers', () => {
     });
 
     await expect(resultPromise).rejects.toThrow(ChunkIncompleteError);
+  });
+
+  test('Discards chunk delivered more than once', async () => {
+    const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
+    const serializeTransform = new SerializeTransform({ maxChunkSize });
+    const deserializeTransform = new DeserializeTransform();
+    const buffer = crypto.randomBytes(Math.ceil(maxChunkSize * 1000 * Math.random()));
+
+    let redundantChunksReceived = 0;
+    let redundantChunksSent = 0;
+
+    deserializeTransform.on('redundantchunk', () => {
+      redundantChunksReceived += 1;
+    });
+
+    // $FlowFixMe
+    const stream = Readable.from(buffer);
+
+    const result = await new Promise((resolve, reject) => {
+      deserializeTransform.on('data', resolve);
+
+      serializeTransform.on('data', (data) => {
+        setTimeout(() => {
+          deserializeTransform.write(data);
+        }, Math.random() * 100);
+        if (Math.random() > 0.25) {
+          setTimeout(() => {
+            redundantChunksSent += 1;
+            deserializeTransform.write(data);
+          }, 100 + Math.random() * 100);
+        }
+      });
+
+      deserializeTransform.on('idle', () => {
+        deserializeTransform.end();
+      });
+
+      deserializeTransform.on('error', (error) => {
+        reject(error);
+      });
+
+      serializeTransform.on('error', (error) => {
+        deserializeTransform.destroy(error);
+        reject(error);
+      });
+
+      stream.pipe(serializeTransform);
+    });
+
+    expect(redundantChunksReceived).toEqual(redundantChunksSent);
+
+    expect(result.equals(buffer)).toEqual(true);
+  });
+
+
+  test('Emits active and idle events, resolves onActive and onIdle promises', async () => {
+    const maxChunkSize = Math.ceil(1024 + Math.random() * 1024 * 1024);
+    const serializeTransform = new SerializeTransform({ maxChunkSize });
+    const deserializeTransform = new DeserializeTransform();
+    const buffer = crypto.randomBytes(maxChunkSize * 10 + Math.round(Math.random() * maxChunkSize * 10));
+
+    // $FlowFixMe
+    const stream = Readable.from(buffer);
+
+    let isActive = deserializeTransform.active;
+
+    deserializeTransform.on('active', () => {
+      isActive = true;
+    });
+
+    deserializeTransform.on('idle', () => {
+      isActive = false;
+    });
+
+    expect(isActive).toEqual(false);
+
+
+    await expect(deserializeTransform.onIdle()).resolves.toBeUndefined();
+
+    let onActivePromiseResolved = false;
+
+    deserializeTransform.onActive().then(() => {
+      onActivePromiseResolved = true;
+    });
+
+    let onIdlePromiseResolved = false;
+
+    let chunkCount = 0;
+
+    await new Promise((resolve, reject) => {
+      deserializeTransform.on('data', () => {
+        setImmediate(() => {
+          // Wait a tick for the onIdle() promise to resolve
+          resolve();
+        });
+      });
+
+      serializeTransform.on('data', (data) => {
+        if (chunkCount === 0) {
+          expect(isActive).toEqual(false);
+        } else if (chunkCount === 1) {
+          deserializeTransform.onIdle().then(() => {
+            onIdlePromiseResolved = true;
+          });
+          expect(isActive).toEqual(true);
+        }
+        chunkCount += 1;
+        deserializeTransform.write(data);
+      });
+
+      deserializeTransform.on('idle', () => {
+        deserializeTransform.end();
+      });
+
+      deserializeTransform.on('error', (error) => {
+        reject(error);
+      });
+
+      serializeTransform.on('error', (error) => {
+        deserializeTransform.destroy(error);
+        reject(error);
+      });
+
+      stream.pipe(serializeTransform);
+    });
+
+    expect(onActivePromiseResolved).toEqual(true);
+    expect(onIdlePromiseResolved).toEqual(true);
   });
 });
 

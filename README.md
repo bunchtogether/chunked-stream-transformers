@@ -1,36 +1,41 @@
 # Chunked Stream Transformers
 
-[![CircleCI](https://circleci.com/gh/bunchtogether/chunked-stream-transformers.svg?style=svg)](https://circleci.com/gh/bunchtogether/chunked-stream-transformers) [![npm version](https://badge.fury.io/js/chunked-stream-transformers.svg)](http://badge.fury.io/js/chunked-stream-transformers)
+[![CircleCI](https://circleci.com/gh/bunchtogether/chunked-stream-transformers.svg?style=svg)](https://circleci.com/gh/bunchtogether/chunked-stream-transformers) [![npm version](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers.svg)](https://badge.fury.io/js/%40bunchtogether%2Fchunked-stream-transformers)
 
-Transform a stream into small chunks, then reassemble chunks to recreate the original stream.
+SerializeTransform transforms large binary chunks into small chunks limited to a maximum size. DeserializeTransform reassembles the small chunks to recreate the original large chunks.
 
-Extends the Node.js stream [Transform](https://nodejs.org/api/stream.html#stream_class_stream_transform) and has no dependencies.
+The protocol implementation is conceptually similar to [Real-time Transport Protocol (RTP)](https://en.wikipedia.org/wiki/Real-time_Transport_Protocol).
+
+Useful for distributed systems where messages may arrive out of order.
+
+Extends the Node.js [Transform](https://nodejs.org/api/stream.html#stream_class_stream_transform) and can be used with any stream. No dependencies.
 
 If you encounter an issue, fork the repository, [write tests demonstrating](https://github.com/bunchtogether/chunked-stream-transformers/tree/master/tests) the issue, and create a [pull request](https://github.com/bunchtogether/chunked-stream-transformers).
 
 ```js
-
-const {
-  SerializeTransform,
-  DeserializeTransform,
-} = require('@bunchtogether/chunked-stream-transformers');
 const crypto = require('crypto');
+const { 
+  SerializeTransform, 
+  DeserializeTransform, 
+  ChunkTimeoutError, 
+  ChunkIncompleteError 
+} = require('@bunchtogether/chunked-stream-transformers');
 
 const serializeTransform = new SerializeTransform({
-  maxChunkSize: 1024,
+  maxChunkSize: 1024 // bytes
 });
 
 const deserializeTransform = new DeserializeTransform({
-  timeout: 1000,
+  timeout: 1000 // ms
 });
 
 // 10 MB buffer
 const originalBuffer = crypto.randomBytes(10 * 1024 * 1024);
 
-// The serialize transform will chunk to a consistent size
-// and add a 10 byte header
+// The serialize transform will chunk to "maxChunkSize"
+// inclusive of a 12 byte header used for chunk reordering
 serializeTransform.on('data', (chunk) => {
-  expect(chunk.length).toBeLessThanOrEqual(1024);
+  // Chunks may be sent out of order
   setTimeout(() => {
     deserializeTransform.write(chunk);
   }, Math.random() * 100);
@@ -39,10 +44,35 @@ serializeTransform.on('data', (chunk) => {
 // The deserialize transform will reorder the chunks
 // and recreate the original buffer
 deserializeTransform.on('data', (receivedBuffer) => {
-  expect(receivedBuffer.length).toEqual(10 * 1024 * 1024);
+  originalBuffer.equals(receivedBuffer); // true
 });
 
 serializeTransform.write(originalBuffer);
+
+deserializeTransform.onIdle().then(() => {
+  // Resolves immediately if no writes are active
+  // or when all writes are complete
+});
+
+deserializeTransform.onActive().then(() => {
+  // Resolves immediately if writes are active
+  // or when a write begins
+});
+
+// Active event is emitted when all chunks start
+deserializeTransform.on('active', () => {
+  deserializeTransform.end();
+});
+
+// Idle event is emitted when all chunks have been completed
+deserializeTransform.on('idle', () => {
+  deserializeTransform.end();
+});
+
+deserializeTransform.on('error', (error) => {
+  deserializeTransform.end();
+});
+
 ```
 
 ## Install
@@ -61,6 +91,9 @@ serializeTransform.write(originalBuffer);
     -   [Parameters](#parameters)
 -   [DeserializeTransform](#deserializetransform)
     -   [Parameters](#parameters-1)
+    -   [bytesRemaining](#bytesremaining)
+    -   [onIdle](#onidle)
+    -   [onActive](#onactive)
 
 ### ChunkTimeoutError
 
@@ -81,13 +114,13 @@ in progress
 **Extends Transform**
 
 Ingests data of any size, emits consistently sized chunks containing
-a 10 byte header used by DeserializeTransform to reconstruct the original
+a 12 byte header used by DeserializeTransform to reconstruct the original
 stream
 
 #### Parameters
 
 -   `options` **[Object](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object)** Transform stream options, see [Node.js documentation](https://nodejs.org/api/stream.html#stream_class_stream_transform) for full documentation (optional, default `{maxChunkSize:1316}`)
-    -   `options.maxChunkSize` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** Maximum size in bytes of emitted chunks, including a 10 byte header. (optional, default `1316`)
+    -   `options.maxChunkSize` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** Maximum size in bytes of emitted chunks, including a 12 byte header. (optional, default `1316`)
 
 ### DeserializeTransform
 
@@ -99,4 +132,24 @@ and emits the original, larger chunks
 #### Parameters
 
 -   `options` **[Object](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object)** Transform stream options, see [Node.js documentation](https://nodejs.org/api/stream.html#stream_class_stream_transform) for full documentation (optional, default `{timeout:5000}`)
-    -   `options.timeout` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** Maximum size in bytes of emitted chunks, including a 10 byte header. (optional, default `5000`)
+    -   `options.timeout` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** Maximum size in bytes of emitted chunks, including a 12 byte header. (optional, default `5000`)
+
+#### bytesRemaining
+
+Bytes remaining from active chunks
+
+Type: [number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)
+
+Returns **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** 
+
+#### onIdle
+
+Resolves when all chunks have completed
+
+Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
+
+#### onActive
+
+Resolves when chunks are initially received
+
+Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
