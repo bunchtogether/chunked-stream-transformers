@@ -2,11 +2,20 @@
 
 [![CircleCI](https://circleci.com/gh/bunchtogether/chunked-stream-transformers.svg?style=svg)](https://circleci.com/gh/bunchtogether/chunked-stream-transformers) [![npm version](https://badge.fury.io/js/chunked-stream-transformers.svg)](http://badge.fury.io/js/chunked-stream-transformers)
 
-Transform a stream into small chunks then reassemble chunks to recreate original data.
+Transform a stream into small chunks, then reassemble chunks to recreate the original stream.
+
+Extends the Node.js stream [Transform](https://nodejs.org/api/stream.html#stream_class_stream_transform) and has no dependencies.
 
 If you encounter an issue, fork the repository, [write tests demonstrating](https://github.com/bunchtogether/chunked-stream-transformers/tree/master/tests) the issue, and create a [pull request](https://github.com/bunchtogether/chunked-stream-transformers).
 
 ```js
+
+const {
+  SerializeTransform,
+  DeserializeTransform,
+} = require('@bunchtogether/chunked-stream-transformers');
+const crypto = require('crypto');
+
 const serializeTransform = new SerializeTransform({
   maxChunkSize: 1024,
 });
