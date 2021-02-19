@@ -41,7 +41,7 @@ class SerializeTransform extends Transform {
     const header = Buffer.allocUnsafe(8);
 
     // write buffer id (random 32 bit unsigned)
-    header.writeUInt32LE((Math.random() * 4294967296) >>> 0);
+    header.writeUInt32LE((Math.random() * 4294967296) >>> 0, 0);
 
     // buffer length
     header.writeUInt32LE(bufferLength, 4);
