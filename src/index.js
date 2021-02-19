@@ -38,10 +38,10 @@ class SerializeTransform extends Transform {
     const bufferLength = buffer.length;
 
     // Write a header containing the ID of this buffer to each slice
-    const header = Buffer.alloc(8);
-    
+    const header = Buffer.allocUnsafe(8);
+
     // write buffer id (random 32 bit unsigned)
-    header.writeUInt32LE((Math.random()*4294967296)>>>0);
+    header.writeUInt32LE((Math.random() * 4294967296) >>> 0);
 
     // buffer length
     header.writeUInt32LE(bufferLength, 4);
@@ -55,7 +55,7 @@ class SerializeTransform extends Transform {
       // header containing the ID and length of the buffer
       while (offset < bufferLength) {
         const sliceLength = offset + maxSliceLength > buffer.length ? buffer.length - offset : maxSliceLength;
-        const slice = Buffer.alloc(12 + sliceLength);
+        const slice = Buffer.allocUnsafe(12 + sliceLength);
         header.copy(slice, 0);
         slice.writeUInt32LE(offset, 8);
         buffer.copy(slice, 12, offset, offset + sliceLength);
@@ -213,7 +213,7 @@ class DeserializeTransform extends Transform {
       if (this.bufferMap.size === 0) {
         this.emit('active');
       }
-      buffer = Buffer.alloc(bufferLength);
+      buffer = Buffer.allocUnsafe(bufferLength);
       this.bufferMap.set(id, buffer);
       this.bufferOffsetsMap.set(id, bufferOffsets);
       if (typeof this.timeoutCheckInterval === 'undefined') {

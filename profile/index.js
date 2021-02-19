@@ -29,6 +29,7 @@ async function run() {
       console.log(` * Heap usage ${Math.round(100 * (memoryUsageCurrent.heapUsed - memoryUsageStart.heapUsed) / 1024 / 1024) / 100} MB`);
     }
   }
+  await new Promise((resolve) => setTimeout(resolve, 100));
   await deserializeTransform.onIdle();
   serializeTransform.destroy();
   deserializeTransform.destroy();
